@@ -29,14 +29,12 @@
 
 #pragma once
 
-#include <QHash>
+#include <QtContainerFwd>
 #include <QMetaType>
-#include <QSet>
-#include <QString>
-#include <QVector>
 
 class QBitArray;
 class QDateTime;
+class QString;
 class QStringList;
 class QUrl;
 

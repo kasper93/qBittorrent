@@ -31,9 +31,10 @@
 
 #include <libtorrent/announce_entry.hpp>
 
+#include <QString>
+#include <QtContainerFwd>
 #include <QtGlobal>
 
-class QString;
 class QStringList;
 
 namespace BitTorrent
@@ -41,7 +42,7 @@ namespace BitTorrent
     class TrackerEntry
     {
     public:
-        enum Status
+        enum class Status
         {
             NotContacted = 1,
             Working = 2,
@@ -49,15 +50,30 @@ namespace BitTorrent
             NotWorking = 4
         };
 
+        class Endpoint
+        {
+        public:
+            Endpoint(const lt::announce_endpoint &nativeEndpoint);
+
+            QString name() const;
+            int numSeeds() const;
+            int numLeeches() const;
+            int numDownloaded() const;
+            QString message() const;
+            Status status() const;
+
+        private:
+            const lt::announce_endpoint m_nativeEndpoint;
+        };
+
         TrackerEntry() = default;
         TrackerEntry(const QString &url);
         TrackerEntry(const lt::announce_entry &nativeEntry);
-        TrackerEntry(const TrackerEntry &other) = default;
-        TrackerEntry &operator=(const TrackerEntry &other) = default;
 
         QString url() const;
         QStringList messages() const;
         Status status() const;
+        QList<Endpoint> endpoints() const;
 
         int tier() const;
         void setTier(int value);

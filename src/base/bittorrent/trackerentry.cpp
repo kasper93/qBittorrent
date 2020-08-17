@@ -30,11 +30,58 @@
 
 #include <algorithm>
 
+#include <QCoreApplication>
 #include <QString>
 #include <QStringList>
 #include <QUrl>
+#include <QVector>
 
 using namespace BitTorrent;
+
+TrackerEntry::Endpoint::Endpoint(const lt::announce_endpoint &nativeEndpoint)
+    : m_nativeEndpoint(nativeEndpoint)
+{
+}
+
+QString TrackerEntry::Endpoint::name() const
+{
+    std::stringstream s;
+    s << m_nativeEndpoint.local_endpoint;
+    return QString::fromStdString(s.str());
+}
+
+int TrackerEntry::Endpoint::numSeeds() const
+{
+    return m_nativeEndpoint.scrape_complete;
+}
+
+int TrackerEntry::Endpoint::numLeeches() const
+{
+    return m_nativeEndpoint.scrape_incomplete;
+}
+
+int TrackerEntry::Endpoint::numDownloaded() const
+{
+    return m_nativeEndpoint.scrape_downloaded;
+}
+
+QString TrackerEntry::Endpoint::message() const
+{
+    if (!m_nativeEndpoint.message.empty())
+        return QString::fromStdString(m_nativeEndpoint.message);
+    if (!m_nativeEndpoint.is_working())
+        return QString::fromStdString(m_nativeEndpoint.last_error.message());
+    return {};
+}
+
+TrackerEntry::Status TrackerEntry::Endpoint::status() const
+{
+    if (m_nativeEndpoint.updating)
+        return Status::Updating;
+    if (!m_nativeEndpoint.is_working())
+        return Status::NotWorking;
+    return Status::Working; // or NotContacted
+}
 
 TrackerEntry::TrackerEntry(const QString &url)
     : m_nativeEntry(url.toStdString())
@@ -66,7 +113,7 @@ QStringList TrackerEntry::messages() const
     for (const lt::announce_endpoint &endpoint : endpoints)
         addMessage(endpoint.message);
     // If there were no response from the tracker and it is not working show error messages
-    if (messages.isEmpty() && (status() == TrackerEntry::NotWorking)) {
+    if (messages.isEmpty() && (status() == Status::NotWorking)) {
         for (const lt::announce_endpoint &endpoint : endpoints)
             addMessage(endpoint.last_error.message());
     }
@@ -80,28 +127,38 @@ int TrackerEntry::tier() const
 
 TrackerEntry::Status TrackerEntry::status() const
 {
-    const auto &endpoints = nativeEntry().endpoints;
+    const bool verified = nativeEntry().verified;
+    const auto &endpointsList = endpoints();
+    int numFailed = 0;
 
-    const bool allFailed = !endpoints.empty() && std::all_of(endpoints.begin(), endpoints.end()
-        , [](const lt::announce_endpoint &endpoint)
-    {
-        return (endpoint.fails > 0);
-    });
-    if (allFailed)
-        return NotWorking;
+    for (const auto &endpoint : endpointsList) {
+        const auto status = endpoint.status();
+        if (status == Status::Updating)
+            return status;
+        if (status == Status::NotWorking) {
+            ++numFailed;
+            continue;
+        }
+        if (!verified)
+            continue;
+        if (status == Status::Working)
+            return status;
+    }
+    if ((numFailed == endpointsList.size()) && (numFailed != 0))
+        return Status::NotWorking;
+    return Status::NotContacted;
+}
 
-    const bool isUpdating = std::any_of(endpoints.begin(), endpoints.end()
-        , [](const lt::announce_endpoint &endpoint)
-    {
-        return endpoint.updating;
-    });
-    if (isUpdating)
-        return Updating;
+QList<TrackerEntry::Endpoint> TrackerEntry::endpoints() const
+{
+    const std::vector<lt::announce_endpoint> &nativeEndpoints = m_nativeEntry.endpoints;
 
-    if (!nativeEntry().verified)
-        return NotContacted;
+    QList<Endpoint> endpoints;
+    endpoints.reserve(static_cast<int>(nativeEndpoints.size()));
+    for (const lt::announce_endpoint &endpoint : nativeEndpoints)
+        endpoints.append(endpoint);
 
-    return Working;
+    return endpoints;
 }
 
 void TrackerEntry::setTier(const int value)
@@ -112,24 +169,24 @@ void TrackerEntry::setTier(const int value)
 int TrackerEntry::numSeeds() const
 {
     int value = -1;
-    for (const lt::announce_endpoint &endpoint : nativeEntry().endpoints)
-        value = std::max(value, endpoint.scrape_complete);
+    for (const Endpoint &endpoint : endpoints())
+        value = std::max(value, endpoint.numSeeds());
     return value;
 }
 
 int TrackerEntry::numLeeches() const
 {
     int value = -1;
-    for (const lt::announce_endpoint &endpoint : nativeEntry().endpoints)
-        value = std::max(value, endpoint.scrape_incomplete);
+    for (const Endpoint &endpoint : endpoints())
+        value = std::max(value, endpoint.numLeeches());
     return value;
 }
 
 int TrackerEntry::numDownloaded() const
 {
     int value = -1;
-    for (const lt::announce_endpoint &endpoint : nativeEntry().endpoints)
-        value = std::max(value, endpoint.scrape_downloaded);
+    for (const Endpoint &endpoint : endpoints())
+        value = std::max(value, endpoint.numDownloaded());
     return value;
 }
 

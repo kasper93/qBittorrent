@@ -1361,12 +1361,12 @@ void TorrentHandleImpl::handleTrackerErrorAlert(const lt::tracker_error_alert *p
     // an announce is attempted. Some endpoints might succeed while others might fail.
     // Emit the signal only if all endpoints have failed.
     const std::vector<lt::announce_entry> nativeTrackers = m_nativeHandle.trackers();
-    const auto iter = std::find_if(nativeTrackers.cbegin(), nativeTrackers.cend(), [cstr = p->tracker_url()](const lt::announce_entry &entry)
+    const auto iter = std::find_if(nativeTrackers.cbegin(), nativeTrackers.cend(), [trackerURL = p->tracker_url()](const lt::announce_entry &entry)
     {
         // Explicitly call compare() instead of == operator to ensure that .url is actually std::string and not char*
-        return (entry.url.compare(cstr) == 0);
+        return (entry.url.compare(trackerURL) == 0);
     });
-    if ((iter != nativeTrackers.cend()) && (TrackerEntry(*iter).status() == TrackerEntry::NotWorking))
+    if ((iter != nativeTrackers.cend()) && (TrackerEntry(*iter).status() == TrackerEntry::Status::NotWorking))
         m_session->handleTorrentTrackerError(this, p->tracker_url());
 }
 
